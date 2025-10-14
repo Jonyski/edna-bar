@@ -15,7 +15,9 @@ Sistema de banco de dados de Bar. Gerencie produtos, atendimentos e outras ativi
 
 ## Como rodar
 
-Antes de mais nada, inicie a base de dados com `make docker-run` (use `sudo` se necessário). Vá para a migração mais recente (se já não estiver) com `./migrate.sh up`.
+Configure as variáveis de ambiente em um arquivo `.env` seguindo os exemplos em `.env.example`.
+
+Inicie a base de dados com `make docker-run` (use `sudo` se necessário). Vá para a migração mais recente (se já não estiver) com `./migrate.sh up`.
 
 Por último rode projeto com `make run`, para rodar com _hot reloading_ (alterações serão atualizadas instantâneamente) use `make watch`.
 
