@@ -7,7 +7,13 @@ Sistema de banco de dados de Bar. Gerencie produtos, atendimentos e outras ativi
 ## Funcionalidades
 - [ ]
 
-## Getting Started
+## Tecnologias
+- Golang
+- Postgres
+- Docker & Docker Compose
+- go-migrate
+
+## Como rodar
 
 Antes de mais nada, inicie a base de dados com `make docker-run` (use `sudo` se necessário). Vá para a migração mais recente (se já não estiver) com `./migrate.sh up`.
 
