@@ -37,6 +37,8 @@ func (s *Store) GetAllComercial(ctx context.Context) ([]model.Comercial, error) 
 
 	return produtos, nil
 }
+
+
 func (s *Store) GetAllEstrutural(ctx context.Context) ([]model.Estrutural, error) {
 	query := "SELECT id_produto, nome, categoria, marca, quantidade_disponivel, quantidade_total, preco_venda FROM ProdutoEstrutural e INNER JOIN Produto p ON e.id_produto = p.id_produto;"
 	rows, err := s.db.QueryContext(ctx, query)
@@ -66,14 +68,11 @@ func (s *Store) CreateComercial(ctx context.Context, props *model.Comercial) err
 	defer t.Rollback()
 
 	query1 := "INSERT INTO Produto (nome, categoria, marca, quantidade_disponivel, quantidade_total) VALUES ($1, $2, $3, $4, $5) RETURNING id_produto;"
-	query2 := "INSERT INTO ProdutoComercial (id_produto, preco_venda) VALUES ($1, $2);"
+	query2 := "INSERT INTO ProdutoComercial (id_produto, preco_venda) VALUES ($1, $2) RETURNING id_produto;"
 
-	r1, err := t.ExecContext(ctx, query1, props.Nome, props.Categoria, props.Marca, props.QntDisponivel, props.QntTotal)
-	if err != nil {
-		return err
-	}
-
-	idProduto, err := r1.LastInsertId()
+	r1 := t.QueryRowContext(ctx, query1, props.Nome, props.Categoria, props.Marca, props.QntDisponivel, props.QntTotal)
+	var idProduto int64
+	err = r1.Scan(&idProduto)
 	if err != nil {
 		return err
 	}
@@ -103,15 +102,12 @@ func (s *Store) CreateEstrutural(ctx context.Context, props *model.Estrutural) e
 	query1 := "INSERT INTO Produto (nome, categoria, marca, quantidade_disponivel, quantidade_total) VALUES ($1, $2, $3, $4, $5) RETURNING id_produto;"
 	query2 := "INSERT INTO ProdutoEstrutural (id_produto) VALUES ($1);"
 
-	r1, err := t.ExecContext(ctx, query1, props.Nome, props.Categoria, props.Marca, props.QntDisponivel, props.QntTotal)
-	if err != nil {
-		return err
-	}
-
-	idProduto, err := r1.LastInsertId()
-	if err != nil {
-		return err
-	}
+	r1 := t.QueryRowContext(ctx, query1, props.Nome, props.Categoria, props.Marca, props.QntDisponivel, props.QntTotal)
+	var idProduto int64
+		err = r1.Scan(&idProduto)
+		if err != nil {
+			return err
+		}
 
 	_, err = t.ExecContext(ctx, query2, idProduto)
 	if err != nil {
@@ -146,7 +142,7 @@ func (s *Store) UpdateComercial(ctx context.Context, id int64, props *model.Come
 		return types.ErrNotFound
 	}
 
-	query2 := "UPDATE Produto SET preco_venda = $1 WHERE id_produto = $2;"
+	query2 := "UPDATE ProdutoComercial SET preco_venda = $1 WHERE id_produto = $2;"
 	res, err = t.ExecContext(ctx, query2, props.PrecoVenda, id)
 	if err != nil {
 		return err
