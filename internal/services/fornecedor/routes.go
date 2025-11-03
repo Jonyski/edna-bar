@@ -5,13 +5,11 @@ import (
 	"edna/internal/model"
 	"edna/internal/util"
 	"encoding/json"
+	"log"
 	"net/http"
-	"time"
+	"strconv"
 )
 
-var (
-	requestTimeout = 2 * time.Second
-)
 
 type Handler struct {
 	store FornecedorStore
@@ -20,6 +18,9 @@ type Handler struct {
 type FornecedorStore interface {
 	GetAll(ctx context.Context) ([]model.Fornecedor, error)
 	Create(ctx context.Context, props *model.Fornecedor) error
+	GetByID(ctx context.Context, id int64) (*model.Fornecedor, error)
+	Update(ctx context.Context, props *model.Fornecedor) error
+	Delete(ctx context.Context, id int64) error
 }
 
 
@@ -30,45 +31,148 @@ func NewHandler(store FornecedorStore) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fornecedores", h.getAllFornecedoresHandler)
 	mux.HandleFunc("POST /fornecedores", h.createFornecedoresHandler)
+	mux.HandleFunc("GET /fornecedores/{id}", h.fetchFornecedorHandler)
+	mux.HandleFunc("PUT /fornecedores/{id}", h.updateFornecedorHandler)
+	mux.HandleFunc("DELETE /fornecedores/{id}", h.deleteFornecedorHandler)
 }
 
 
 func (h *Handler) getAllFornecedoresHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
 	fornecedores, err := h.store.GetAll(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	err = util.WriteJSON(w, http.StatusOK, fornecedores)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func (h *Handler) createFornecedoresHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
 	if r.Body == nil {
-		http.Error(w, "No body in the request", http.StatusBadRequest)
+		util.ErrorJSON(w, "No body in the request", http.StatusBadRequest)
 		return
 	}
 
 	var model model.Fornecedor
 	err := json.NewDecoder(r.Body).Decode(&model)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		util.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	err = h.store.Create(ctx, &model)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		util.ErrorJSON(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	util.WriteJSON(w, http.StatusCreated, model)
+}
+
+func (h *Handler) fetchFornecedorHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
+	defer cancel()
+
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		util.ErrorJSON(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fornecedor, err := h.store.GetByID(ctx, id)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if fornecedor == nil {
+		util.ErrorJSON(w, "Fornecedor not found.", http.StatusNotFound)
+		return
+	}
+
+	res, err := json.Marshal(*fornecedor)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Fornecedor fetched: %v", fornecedor)
+	util.WriteJSON(w, http.StatusOK, res)
+}
+
+
+type FornecedorPayload struct {
+	CPNJ string `json:"cnpj"`
+	Nome string `json:"nome"`
+}
+
+func (h *Handler) updateFornecedorHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
+	defer cancel()
+
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		util.ErrorJSON(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var payload FornecedorPayload
+	err = json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	model := model.Fornecedor{
+		Id: id,
+		Nome: payload.Nome,
+		CNPJ: payload.CPNJ,
+	}
+	err = h.store.Update(ctx, &model)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, model)
+}
+
+func (h *Handler) deleteFornecedorHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
+	defer cancel()
+
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		util.ErrorJSON(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = h.store.Delete(ctx, id)
+	if err != nil {
+		util.ErrorJSON(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, nil)
 }

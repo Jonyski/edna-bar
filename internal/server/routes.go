@@ -12,7 +12,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	fornecedorHandler := fornecedor.NewHandler(s.fornecedorStore)
 	// Register routes
-	mux.HandleFunc("/", s.HelloWorldHandler)
+	mux.HandleFunc("/", s.trailingSlashHandler)
 	mux.HandleFunc("/health", s.healthHandler)
 
 	fornecedorHandler.RegisterRoutes(mux)
@@ -40,8 +40,9 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	resp := map[string]string{"message": "Hello World"}
+func (s *Server) trailingSlashHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	resp := map[string]string{"message": "Unmatched path, please check your url path and try again."}
 	jsonResp, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
