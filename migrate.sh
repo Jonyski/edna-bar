@@ -3,7 +3,7 @@
 set -e
 
 # Database connection URL
-DB_URL=${DB_URL:-"postgres://melkey:password1234@localhost:5432/blueprint?sslmode=disable"}
+DB_URL=${DB_URL:-"postgres://admin:password1234@localhost:5432/edna-db?sslmode=disable"}
 # Migrations directory path
 MIGRATIONS_DIR=${MIGRATIONS_DIR:-"./migrations"}
 
