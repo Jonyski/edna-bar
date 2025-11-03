@@ -10,7 +10,11 @@ import (
 	"time"
 
 	"edna/internal/server"
+
 )
+// @title EDNA Bar System
+// @version 1.0
+// @description Aplicação de Banco de Dados para Gerenciamento de Bares
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
 	// Create context that listens for the interrupt signal from the OS.

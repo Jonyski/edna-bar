@@ -1,0 +1,10 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Aplicação de Banco de Dados para Gerenciamento de Bares",
+        "title": "EDNA Bar System",
+        "contact": {},
+        "version": "1.0"
+    },
+    "paths": {}
+}

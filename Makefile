@@ -5,8 +5,8 @@ all: build test
 
 build:
 	@echo "Building..."
-	
-	
+
+
 	@go build -o main cmd/api/main.go
 
 # Run the application
@@ -61,4 +61,7 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch docker-run docker-down itest
+docs:
+	swag init --dir cmd/api --parseDependency --parseInternal --parseDepth 1
+
+.PHONY: all build run test clean watch docker-run docker-down itest docs
