@@ -2,24 +2,28 @@ package server
 
 import (
 	"edna/internal/services/fornecedor"
+	"edna/internal/services/produto"
 	"encoding/json"
 	"log"
 	"net/http"
 
-	httpSwagger "github.com/swaggo/http-swagger"
 	_ "edna/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	fornecedorHandler := fornecedor.NewHandler(s.fornecedorStore)
+	produtoHandler := produto.NewHandler(s.produtoStore)
 	// Register routes
 	mux.HandleFunc("/", s.trailingSlashHandler)
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.Handle("/swagger/", httpSwagger.Handler())
 
 	fornecedorHandler.RegisterRoutes(mux)
+	produtoHandler.RegisterRoutes(mux)
 
 	// Wrap the mux with CORS middleware
 	return s.logMiddleware(s.corsMiddleware(mux))

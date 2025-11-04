@@ -11,6 +11,7 @@ import (
 
 	"edna/internal/database"
 	"edna/internal/services/fornecedor"
+	"edna/internal/services/produto"
 )
 
 type Server struct {
@@ -18,6 +19,7 @@ type Server struct {
 
 	db database.Service
 	fornecedorStore *fornecedor.Store
+	produtoStore *produto.Store
 }
 
 func NewServer() *http.Server {
@@ -28,6 +30,7 @@ func NewServer() *http.Server {
 
 		db: db,
 		fornecedorStore: fornecedor.NewStore(db.Conn()),
+		produtoStore: produto.NewStore(db.Conn()),
 	}
 
 	// Declare Server config

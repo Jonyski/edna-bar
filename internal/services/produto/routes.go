@@ -3,6 +3,7 @@ package produto
 import (
 	"context"
 	"edna/internal/model"
+	"edna/internal/types"
 	"edna/internal/util"
 	"net/http"
 )
@@ -12,14 +13,14 @@ type Handler struct {
 }
 
 type ProdutoStore interface {
-	GetAllComercial(ctx context.Context) ([]model.Comercial, error)
-	GetAllEstrutural(ctx context.Context) ([]model.Estrutural, error)
+	GetAllComercial(ctx context.Context, filter *model.ComercialFilter) ([]model.Comercial, error)
+	GetAllEstrutural(ctx context.Context, filter *model.EstruturalFilter) ([]model.Estrutural, error)
 	CreateComercial(ctx context.Context, props *model.Comercial) error
 	CreateEstrutural(ctx context.Context, props *model.Estrutural) error
 	UpdateComercial(ctx context.Context, id int64, props *model.Comercial) error
 	UpdateEstrutural(ctx context.Context, id int64, props *model.Estrutural) error
-	GetComercialByID(ctx context.Context, id int64) (*model.Produto, error)
-	GetEstruturalByID(ctx context.Context, id int64) (*model.Produto, error)
+	GetComercialByID(ctx context.Context, id int64) (*model.Comercial, error)
+	GetEstruturalByID(ctx context.Context, id int64) (*model.Estrutural, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -43,9 +44,11 @@ func (h *Handler) getAllComercialHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
-	produtos, err := h.store.GetAllComercial(ctx)
+	filter := model.NewComercialFilter(r.URL)
+	produtos, err := h.store.GetAllComercial(ctx, filter)
 	if err != nil {
 		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	if err = util.WriteJSON(w, http.StatusOK, produtos); err != nil {
@@ -57,9 +60,11 @@ func (h *Handler) getAllEstruturalHandler(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
-	produtos, err := h.store.GetAllEstrutural(ctx)
+	filter := model.NewEstruturalFilter(r.URL)
+	produtos, err := h.store.GetAllEstrutural(ctx, filter)
 	if err != nil {
 		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	if err = util.WriteJSON(w, http.StatusOK, produtos); err != nil {
@@ -71,14 +76,19 @@ func (h *Handler) createComercialHandler(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
-	produto := model.Comercial{}
-	if err := util.ReadJSON(r, &produto); err != nil {
+	payload := model.ProdutoComercialPayload{}
+	if err := util.ReadJSON(r, &payload); err != nil {
 		util.ErrorJSON(w, "Failed to decode request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.store.CreateComercial(ctx, &produto); err != nil {
-		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
+	produto := model.NewComercial(payload)
+	if err := h.store.CreateComercial(ctx, produto); err != nil {
+		status := http.StatusInternalServerError
+		if err == types.ErrNotFound {
+			status = http.StatusNotFound
+		}
+		util.ErrorJSON(w, err.Error(), status)
 		return
 	}
 
@@ -91,13 +101,14 @@ func (h *Handler) createEstruturalHandler(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
 	defer cancel()
 
-	produto := model.Estrutural{}
-	if err := util.ReadJSON(r, &produto); err != nil {
+	payload := model.ProdutoEstruturalPayload{}
+	if err := util.ReadJSON(r, &payload); err != nil {
 		util.ErrorJSON(w, "Failed to decode request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.store.CreateEstrutural(ctx, &produto); err != nil {
+	produto := model.NewEstrutural(payload)
+	if err := h.store.CreateEstrutural(ctx, produto); err != nil {
 		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -117,13 +128,14 @@ func (h *Handler) updateComercialHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	produto := model.Comercial{}
-	if err := util.ReadJSON(r, &produto); err != nil {
+	payload := model.ProdutoComercialPayload{}
+	if err := util.ReadJSON(r, &payload); err != nil {
 		util.ErrorJSON(w, "Failed to decode request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.store.UpdateComercial(ctx, id, &produto); err != nil {
+	produto := model.NewComercial(payload)
+	if err := h.store.UpdateComercial(ctx, id, produto); err != nil {
 		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -143,13 +155,14 @@ func (h *Handler) updateEstruturalHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	produto := model.Estrutural{}
-	if err := util.ReadJSON(r, &produto); err != nil {
+	payload := model.ProdutoEstruturalPayload{}
+	if err := util.ReadJSON(r, &payload); err != nil {
 		util.ErrorJSON(w, "Failed to decode request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.store.UpdateEstrutural(ctx, id, &produto); err != nil {
+	produto := model.NewEstrutural(payload)
+	if err := h.store.UpdateEstrutural(ctx, id, produto); err != nil {
 		util.ErrorJSON(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
