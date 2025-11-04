@@ -8,12 +8,14 @@ Sistema de banco de dados de Bar. Gerencie produtos, atendimentos e outras ativi
 
 - Controle (leitura, criação, modificação, etc...):
   - [x] Fornecedores
-  - [ ] Produtos
+  - [x] Produtos
   - [ ] Lotes
   - [ ] Clientes
   - [ ] Funcionários
   - [ ] Vendas
   - [ ] Ofertas
+- [ ] Documentação interativa da API com Swagger UI
+- [ ] Frontend
 
 ## Tecnologias
 - Golang 1.24
