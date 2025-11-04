@@ -1,5 +1,49 @@
 # Simple Makefile for a Go project
+#
+# Compile e rode os testes.
+# ```bash
+# make all
+# ```
 
+# Compile a aplicação
+# ```bash
+# make build
+# ```
+
+# Rode a aplicação
+# ```bash
+# make run
+# ```
+
+# Cria o banco de dados por um _container_ docker:
+# ```bash
+# make docker-run
+# ```
+
+# Desativa o container:
+# ```bash
+# make docker-down
+# ```
+
+# Testes de integração no Banco de Dados:
+# ```bash
+# make itest
+# ```
+
+# Live reload aplicação:
+# ```bash
+# make watch
+# ```
+
+# Rode os testes:
+# ```bash
+# make test
+# ```
+
+# Remova o executavél
+# ```bash
+# make clean
+# ```
 # Build the application
 all: build test
 
@@ -62,6 +106,22 @@ watch:
         fi
 
 docs:
-	swag init --dir cmd/api --parseDependency --parseInternal --parseDepth 1
+	swag init --dir cmd/api,internal --parseDependency --parseInternal
 
-.PHONY: all build run test clean watch docker-run docker-down itest docs
+help:
+	@echo "Usage: make command"
+	@echo "Execute commands quick commands on the project with the help of make.\n"
+	@echo "COMMANDS:"
+	@echo "  all         - Build the application and run unit tests (default target)"
+	@echo "  build       - Compile the Go application (outputs ./main)"
+	@echo "  run         - Run the application using 'go run cmd/api/main.go'"
+	@echo "  docker-run  - Create and start the database container (Docker Compose)"
+	@echo "  docker-down - Stop and remove the database container (Docker Compose)"
+	@echo "  test        - Run all unit tests (go test ./... -v)"
+	@echo "  itest       - Run integration tests for the database package (internal/database)"
+	@echo "  watch       - Start live-reload using 'air' (offers to install if missing)"
+	@echo "  clean       - Remove the compiled binary (rm -f main)"
+	@echo "  docs        - Generate Swagger docs using 'swag init'"
+	@echo "  help        - Show this help message"
+
+.PHONY: all build run test clean watch docker-run docker-down itest docs help
