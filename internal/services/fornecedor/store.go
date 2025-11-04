@@ -52,6 +52,15 @@ func (s *Store) queryRowsWithFilter(
 		query += " WHERE nome LIKE '%' || $1 || '%'"
 	}
 
+	switch filter.Sort {
+	case "nome":
+		query += " ORDER BY nome"
+	case "cnpj":
+		query += " ORDER BY CNPJ"
+	default:
+		query += " ORDER BY id_fornecedor"
+	}
+
 	if filter.Offset > 0 {
 		filterValues = append(filterValues, filter.Offset)
 		query += " OFFSET $" + strconv.Itoa(len(filterValues))
@@ -60,6 +69,7 @@ func (s *Store) queryRowsWithFilter(
 		filterValues = append(filterValues, filter.Limit)
 		query += " LIMIT $" + strconv.Itoa(len(filterValues))
 	}
+	println(query)
 
 	return s.db.QueryContext(ctx, query, filterValues...)
 }
