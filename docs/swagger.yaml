@@ -21,6 +21,19 @@ definitions:
       nome:
         type: string
     type: object
+  model.ClienteWithSaldo:
+    properties:
+      cpf:
+        type: string
+      data_nascimento:
+        type: string
+      id:
+        type: integer
+      nome:
+        type: string
+      saldo_devedor:
+        type: number
+    type: object
   model.Comercial:
     properties:
       categoria:
@@ -404,6 +417,30 @@ paths:
       summary: Update Cliente
       tags:
       - Cliente
+  /clientes/{id}/saldo:
+    get:
+      parameters:
+      - description: Cliente ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.ClienteWithSaldo'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Fetch Client's Balance
   /fornecedores:
     get:
       parameters:
@@ -1215,6 +1252,33 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Update Produto
+      tags:
+      - Produtos
+  /produtos/{id}/quantidades:
+    get:
+      parameters:
+      - description: Produto ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            format: int64
+            type: integer
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get Produto Quantidade
       tags:
       - Produtos
   /produtos/comercial:
