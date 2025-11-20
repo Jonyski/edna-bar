@@ -155,7 +155,7 @@ func (s *Store) Delete(ctx context.Context, id int) (*model.AplicaOferta, error)
 	query := `
 		DELETE FROM aplica_oferta
 		WHERE id_aplica_oferta = $1
-		RETURNING id_oferta, id_venda, id_item_venda
+		RETURNING id_aplica_oferta, id_oferta, id_venda, id_item_venda
 	`
 
 	var a model.AplicaOferta
