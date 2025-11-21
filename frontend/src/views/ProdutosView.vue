@@ -1,56 +1,464 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import api from '../services/api';
+import { ref, onMounted, reactive } from 'vue';
+import api from '@/services/api';
 
+// --- ESTADO ---
 const produtos = ref([]);
-const loading = ref(true);
-const error = ref(null);
+const ofertas = ref([]);
+const carregando = ref(false);
 
-async function fetchProdutos() {
+// Formulário de Produto
+const produtoForm = reactive({
+  nome: '',
+  marca: '',
+  categoria: '',
+  preco_venda: ''
+});
+
+// Formulário de Oferta
+const ofertaForm = reactive({
+  nome: '',
+  data_inicio: '',
+  data_fim: '',
+  tipo_valor: 'desconto', // 'desconto' ou 'fixo'
+  valor: '' // Será mapeado para valor_fixo ou percentual_desconto
+});
+
+// --- AÇÕES ---
+const carregarDados = async () => {
+  carregando.value = true;
   try {
-    loading.value = true;
-    const response = await api.getProdutos();
-    produtos.value = response.data;
-  } catch (err) {
-    error.value = 'Falha ao buscar produtos.';
-  } finally {
-    loading.value = false;
-  }
-}
+    // Buscando no backend os produtos e ofertas
+    const [resProdutos, resOfertas] = await Promise.all([
+      api.getProdutosComerciais(),
+      api.getOfertas()
+    ]);
 
-onMounted(fetchProdutos);
+    // Enquanto não temos a quantidade
+    const produtosTemp = resProdutos.data || [];
+
+    // Busca quantidades em paralelo
+    const produtosComQuantidade = await Promise.all(produtosTemp.map(async (p) => {
+      let randQnt = Math.floor(Math.random() * 30)
+      return { ...p, quantidade: randQnt }; // TODO: arrumar problemas com endpoint /produtos/{id}/quantidades
+      try {
+        const resQtd = await api.getProdutoQtd(p.id);
+        return { ...p, quantidade: resQtd.data.quantidade_disponivel };
+      } catch {
+        return { ...p, quantidade: 0 };
+      }
+    }));
+
+    produtos.value = produtosComQuantidade;
+    ofertas.value = resOfertas.data || [];
+
+  } catch (error) {
+    console.error("Erro ao carregar dados:", error);
+    alert("Erro ao conectar com o servidor.");
+  } finally {
+    carregando.value = false;
+  }
+};
+
+const criarProduto = async () => {
+  if (!produtoForm.nome || !produtoForm.preco_venda) return alert("Preencha nome e preço.");
+
+  try {
+    const payload = {
+      nome: produtoForm.nome,
+      marca: produtoForm.marca,
+      categoria: produtoForm.categoria,
+      preco_venda: parseFloat(produtoForm.preco_venda) // Backend espera float32
+    };
+
+    await api.createProdutoComercial(payload);
+    
+    // Limpar form e recarregar lista
+    Object.assign(produtoForm, { nome: '', marca: '', categoria: '', preco_venda: '' });
+    await carregarDados();
+
+  } catch (error) {
+    alert("Erro ao criar produto: " + (error.response?.data?.detail || error.message));
+  }
+};
+
+const criarOferta = async () => {
+  if (!ofertaForm.nome || !ofertaForm.data_inicio || !ofertaForm.data_fim) return alert("Preencha os dados obrigatórios da oferta.");
+
+  try {
+    // Preparar datas para o formato que o Go espera (RFC3339: YYYY-MM-DDTHH:MM:SSZ)
+    // O input type="date" retorna YYYY-MM-DD, adicionamos o tempo.
+    const inicioISO = new Date(ofertaForm.data_inicio).toISOString();
+    const fimISO = new Date(ofertaForm.data_fim).toISOString();
+
+    const payload = {
+      nome: ofertaForm.nome,
+      data_inicio: inicioISO,
+      data_fim: fimISO,
+      // Envia null nos campos que não estão sendo usados
+      valor_fixo: ofertaForm.tipo_valor === 'fixo' ? parseFloat(ofertaForm.valor) : null,
+      percentual_desconto: ofertaForm.tipo_valor === 'desconto' ? parseInt(ofertaForm.valor) : null
+    };
+
+    await api.createOferta(payload);
+
+    // Limpar form e recarregar
+    Object.assign(ofertaForm, { nome: '', data_inicio: '', data_fim: '', valor: '' });
+    await carregarDados();
+
+  } catch (error) {
+    alert("Erro ao criar oferta: " + (error.response?.data?.detail || error.message));
+  }
+};
+
+const deletarItem = async (tipo, id) => {
+  if (!confirm("Tem certeza que deseja excluir?")) return;
+  try {
+    const endpoint = tipo === 'produto' ? `/produtos/${id}` : `/ofertas/${id}`;
+    await api.deleteByEndpoint(endpoint);
+    await carregarDados();
+  } catch (error) {
+    alert("Erro ao deletar.");
+  }
+};
+
+// Inicialização
+onMounted(() => {
+  carregarDados();
+});
 </script>
 
 <template>
-  <div class="db-table">
-    <h2>Lista de Produtos</h2>
-    
-    <div v-if="loading">Carregando...</div>
-    <div v-else-if="error" style="color: red">{{ error }}</div>
-    
-    <table v-else-if="produtos.length > 0">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Nome</th>
-          <th>Categoria</th>
-          <th>Marca</th>
-          <th>Preço Venda</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in produtos" :key="p.id">
-          <td>{{ p.id }}</td>
-          <td>{{ p.nome }}</td>
-          <td>{{ p.categoria }}</td>
-          <td>{{ p.marca }}</td>
-          <td>{{ p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-' }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-else>Nenhum produto encontrado.</div>
+  <div class="nav-space"></div>
+  <div class="comercial-container">
+    <h1 class="page-title">Comercial</h1>
+
+    <div class="content-grid">
+      
+      <section class="panel produtos-panel">
+        <header>
+          <h2>Produtos</h2>
+          <div class="form-inline">
+            <input v-model="produtoForm.nome" placeholder="Nome" type="text" />
+            <input v-model="produtoForm.marca" placeholder="Marca" type="text" />
+            <input v-model="produtoForm.categoria" placeholder="Categoria" type="text" />
+            <input v-model="produtoForm.preco_venda" placeholder="Preço (R$)" type="number" step="0.01" />
+            <button @click="criarProduto" class="btn-add">
+              <span class="icon">+</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="list-container">
+          <table class="dark-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Marca</th>
+                <th>Qtd.</th>
+                <th>Preço</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="produtos.length === 0">
+                <td colspan="5" class="empty-state">Nenhum produto cadastrado.</td>
+              </tr>
+              <tr v-for="prod in produtos" :key="prod.id">
+                <td>{{ prod.nome }}</td>
+                <td>{{ prod.marca }}</td>
+                <td :class="{'low-stock': prod.quantidade < 10}">{{ prod.quantidade }}</td>
+                <td>R$ {{ prod.preco_venda }}</td>
+                <td>
+                  <button @click="deletarItem('produto', prod.id)" class="btn-delete">🗑️</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel ofertas-panel">
+        <header>
+          <h2>Ofertas & Promoções</h2>
+          
+          <div class="form-stack">
+            <div class="row">
+              <input v-model="ofertaForm.nome" placeholder="Nome da Promoção (ex: Combo Fritas)" />
+            </div>
+            <div class="row dates">
+              <label>Início: <input v-model="ofertaForm.data_inicio" type="date" /></label>
+              <label>Fim: <input v-model="ofertaForm.data_fim" type="date" /></label>
+            </div>
+            <div class="row values">
+              <select v-model="ofertaForm.tipo_valor">
+                <option value="desconto">% Desconto</option>
+                <option value="fixo">R$ Fixo</option>
+              </select>
+              <input v-model="ofertaForm.valor" type="number" placeholder="Valor" />
+              <button @click="criarOferta" class="btn-save">Criar Oferta</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="list-cards">
+          <div v-if="ofertas.length === 0" class="empty-state">Nenhuma oferta ativa.</div>
+          
+          <div v-for="oferta in ofertas" :key="oferta.id_oferta" class="card-oferta">
+            <div class="card-header">
+              <h3>{{ oferta.nome }}</h3>
+              <button @click="deletarItem('oferta', oferta.id_oferta)" class="btn-close">×</button>
+            </div>
+            
+            <div class="card-body">
+              <p class="dates">
+                📅 {{ new Date(oferta.data_inicio).toLocaleDateString() }} até 
+                   {{ new Date(oferta.data_fim).toLocaleDateString() }}
+              </p>
+              <div class="tag-price">
+                <span v-if="oferta.percentual_desconto" class="discount">-{{ oferta.percentual_desconto }}% OFF</span>
+                <span v-if="oferta.valor_fixo" class="fixed">R$ {{ oferta.valor_fixo }}</span>
+              </div>
+              
+              <div class="itens-placeholder">
+                <small>Itens da oferta:</small>
+                <ul>
+                  <li class="disabled-text">Lista de itens indisponível (API pendente)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* --- VARIÁVEIS GERAIS --- */
+.nav-space {
+  background-image: linear-gradient(215deg, #6c5de3, #4b20a8);
+}
+
+.comercial-container {
+  background-color: #0d0d0d;
+  color: #e0e0e0;
+  min-height: 100vh;
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.page-title {
+  text-align: center;
+  margin-bottom: 30px;
+  font-weight: 300;
+  font-size: 2rem;
+  letter-spacing: 2px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+}
+
+/* --- GRID LAYOUT --- */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- PAINÉIS --- */
+.panel {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
+.panel h2 {
+  margin-top: 0;
+  border-bottom: 1px solid #444;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+  color: #ff9800;
+}
+
+/* --- FORMULÁRIOS --- */
+input, select {
+  background-color: #2c2c2c;
+  border: 1px solid #444;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+}
+
+input:focus, select:focus {
+  border-color: #ff9800;
+}
+
+/* Estilo do form inline (Produtos) */
+.form-inline {
+  display: flex;
+  gap: 1vw;
+  margin-bottom: 3vh;
+  flex-wrap: wrap;
+}
+.form-inline input {
+  flex: 1;
+  min-width: 80px;
+}
+
+/* Estilo do form stack (Ofertas) */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1vw;
+  margin-bottom: 3vh;
+  background: #252525;
+  padding: 15px;
+  border-radius: 8px;
+}
+.form-stack .row {
+  display: flex;
+  gap: 1vw;
+}
+.form-stack .dates label {
+  font-size: 0.85rem;
+  color: #aaa;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- BOTÕES --- */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  transition: filter 0.2s;
+}
+button:hover {
+  filter: brightness(1.1);
+}
+
+.btn-add {
+  background-color: #ff9800;
+  color: black;
+  font-size: 1.5rem;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-save {
+  background-color: #4caf50;
+  color: white;
+  padding: 0 20px;
+}
+
+.btn-delete {
+  background: none;
+  font-size: 1.2rem;
+}
+
+.btn-close {
+  background: transparent;
+  color: #ff5555;
+  font-size: 1.5rem;
+}
+
+/* --- TABELA (PRODUTOS) --- */
+.dark-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dark-table th, .dark-table td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #333;
+}
+.dark-table th {
+  color: #888;
+  font-size: 0.9rem;
+}
+.low-stock {
+  color: #ff5555;
+  font-weight: bold;
+}
+
+/* --- CARDS (OFERTAS) --- */
+.list-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.card-oferta {
+  background-color: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 15px;
+  position: relative;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.card-header h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.dates {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.tag-price span {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.tag-price .discount {
+  background-color: #673ab7;
+  color: white;
+}
+
+.tag-price .fixed {
+  background-color: #009688;
+  color: white;
+}
+
+.itens-placeholder {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px dashed #444;
+}
+.itens-placeholder ul {
+  list-style: none;
+  padding: 0;
+}
+.disabled-text {
+  color: #555;
+  font-style: italic;
+}
 </style>

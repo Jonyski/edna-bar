@@ -1,9 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import HomeView from '../views/HomeView.vue';
-import ClientesView from '../views/ClientesView.vue';
+import FinanceiroView from '../views/FinanceiroView.vue';
 import ProdutosView from '../views/ProdutosView.vue';
-import OfertasView from '../views/OfertasView.vue';
+import VendasView from '../views/VendasView.vue';
 import FornecedoresView from '../views/FornecedoresView.vue';
 
 const router = createRouter({
@@ -15,9 +15,9 @@ const router = createRouter({
           component: HomeView,
         },
         {
-          path: '/clientes',
-          name: 'Clientes',
-          component: ClientesView,
+          path: '/financeiro',
+          name: 'Financeiro',
+          component: FinanceiroView,
         },
         {
           path: '/produtos',
@@ -25,9 +25,9 @@ const router = createRouter({
           component: ProdutosView,
         },
         {
-          path: '/ofertas',
-          name: 'Ofertas',
-          component: OfertasView,
+          path: '/vendas',
+          name: 'Vendas',
+          component: VendasView,
         },
         {
           path: '/fornecedores',

@@ -3,13 +3,14 @@
   border: 0px;
   margin: 0px;
   font-size: 2.5vh;
+  color: #F5E8BA;
 }
 html {
-  background-color: #2D2230;
+  background-color: #b6e5f3;
 }
 
-.db-table {
-    padding-top: 10vh;
+.nav-space {
+  height: 10vh;
 }
 
 table {

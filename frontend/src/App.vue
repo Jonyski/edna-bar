@@ -7,9 +7,9 @@
       <nav class="navbar">
         <ul class="nav-links">
           <li><RouterLink to="/">Início</RouterLink></li>
-          <li><RouterLink to="/clientes">Clientes</RouterLink></li>
+          <li><RouterLink to="/financeiro">Financeiro</RouterLink></li>
           <li><RouterLink to="/produtos">Produtos</RouterLink></li>
-          <li><RouterLink to="/ofertas">Ofertas</RouterLink></li>
+          <li><RouterLink to="/vendas">Vendas</RouterLink></li>
           <li><RouterLink to="/fornecedores">Fornecedores</RouterLink></li>
         </ul>
       </nav>
@@ -42,7 +42,7 @@
   padding: 0px 2rem;
 }
 .nav-links li {
-  padding: 15px 20px;
+  padding: 1vh 2vw;
 }
 .nav-links a {
   color: #0d0d0d;

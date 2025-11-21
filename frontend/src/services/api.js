@@ -28,10 +28,26 @@ export default {
         // filters pode ser um objeto, ex: { params: { 'filter-nome': 'ilike.Cerveja' } }
         return apiClient.get('/produtos', filters);
     },
+    getProdutosComerciais(filters = null) {
+        // filters pode ser um objeto, ex: { params: { 'filter-nome': 'ilike.Cerveja' } }
+        return apiClient.get('/produtos/comercial', filters);
+    },
     getClientes(filters = null) {
         return apiClient.get('/clientes');
     },
     getOfertas(filters = null) {
         return apiClient.get('/ofertas')
-    }
+    },
+    createProdutoComercial(data) {
+        return apiClient.post('/produtos/comercial', data);
+    },
+    getProdutoQtd(id) {
+        return apiClient.get(`/produtos/quantidade/${id}`);
+    },
+    createOferta(data) {
+        return apiClient.post('/ofertas', data);
+    },
+    deleteByEndpoint(endpoint) {
+        return apiClient.delete(endpoint);
+    },
 };
