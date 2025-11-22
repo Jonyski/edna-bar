@@ -439,8 +439,9 @@ select:focus {
     flex-wrap: wrap;
 }
 .form-inline input {
-    flex: 1;
-    min-width: 80px;
+  flex: 1;
+  width: auto;
+  min-width: 80px;
 }
 
 /* Estilo do form stack (Ofertas) */
@@ -505,7 +506,7 @@ button:hover {
 }
 
 .card-item:hover {
-    border: 2px solid var(--edna-light-gray);
+  border-color: var(--edna-light-gray);
 }
 
 /* --- CARDS (PRODUTOS) --- */
@@ -533,12 +534,12 @@ button:hover {
 }
 
 .marca-tag {
-    font-size: 0.75rem;
-    color: var(--edna-light-gray);
-    text-transform: uppercase;
-    background: #111;
-    padding: 2px 6px;
-    border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--edna-light-gray);
+  text-transform: uppercase;
+  background: var(--edna-black);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .card-details {
