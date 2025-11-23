@@ -3,7 +3,7 @@ import { ref, onMounted, computed, reactive, watch } from "vue";
 import api from "@/services/api";
 
 // --- ESTADO GERAL ---
-const modo = ref("nova"); // 'nova' ou 'historico'
+const modo = ref("nova"); // 'nova', 'historico', 'clientes'
 const carregando = ref(false);
 
 // Caches de dados
@@ -25,88 +25,18 @@ const historicoVendas = ref([]);
 const vendaSelecionada = ref(null);
 const itensVendaSelecionada = ref([]);
 
-// --- DADOS: CLIENTES (ATUALIZADO) ---
+// --- DADOS: CLIENTES ---
 const clienteSelecionado = ref(null);
 const historicoCliente = ref([]);
 const saldoCliente = ref(0);
 
-// NOVO: Estado para criação
+// --- DADOS: NOVO CLIENTE ---
 const isCreatingClient = ref(false);
 const formCliente = reactive({
     nome: "",
     cpf: "",
     data_nascimento: "",
 });
-
-// Atualizar o watch(modo)
-watch(modo, (novoVal) => {
-    if (novoVal === "historico") carregarHistorico();
-    if (novoVal === "clientes") {
-        vendaSelecionada.value = null;
-        clienteSelecionado.value = null;
-        isCreatingClient.value = false; // Resetar
-    }
-});
-
-// NOVO: Iniciar criação
-const iniciarCadastroCliente = () => {
-    clienteSelecionado.value = null;
-    isCreatingClient.value = true;
-    // Limpar form
-    Object.assign(formCliente, { nome: "", cpf: "", data_nascimento: "" });
-};
-
-// NOVO: Salvar no backend
-const salvarCliente = async () => {
-    if (!formCliente.nome || !formCliente.cpf)
-        return alert("Nome e CPF obrigatórios");
-
-    try {
-        // Formata data para ISO se houver
-        const payload = { ...formCliente };
-        if (payload.data_nascimento) {
-            payload.data_nascimento = new Date(
-                payload.data_nascimento,
-            ).toISOString();
-        } else {
-            payload.data_nascimento = null;
-        }
-
-        await api.createCliente(payload);
-
-        alert("Cliente cadastrado!");
-        isCreatingClient.value = false;
-        carregarDadosIniciais(); // Recarrega a lista da direita
-    } catch (error) {
-        alert(
-            "Erro ao criar: " + (error.response?.data?.detail || error.message),
-        );
-    }
-};
-
-// Atualizar selecionarCliente para fechar o modo de criação
-const selecionarCliente = async (cliente) => {
-    isCreatingClient.value = false; // Garante que saia do modo de criação
-    clienteSelecionado.value = cliente;
-    saldoCliente.value = 0;
-    historicoCliente.value = [];
-
-    // ... resto da função igual ao anterior ...
-    try {
-        const resSaldo = await api.getClienteSaldo(cliente.id);
-        saldoCliente.value = resSaldo.data.saldo_devedor || 0;
-
-        const resVendas = await api.getVendas({
-            params: {
-                "filter-idCliente": `eq.${cliente.id}`,
-                sort: "-dataHoraVenda",
-            },
-        });
-        historicoCliente.value = resVendas.data || [];
-    } catch (error) {
-        console.error(error);
-    }
-};
 
 // --- COMPUTED (Cálculos) ---
 const totalVenda = computed(() => {
@@ -115,8 +45,7 @@ const totalVenda = computed(() => {
             (acc, item) => acc + item.preco_venda * item.quantidade,
             0,
         );
-    } else if (vendaSelecionada.value) {
-        // No histórico, somamos os itens recuperados do banco
+    } else if (modo.value === "historico" && vendaSelecionada.value) {
         return itensVendaSelecionada.value.reduce(
             (acc, item) => acc + item.valor_unitario * item.quantidade,
             0,
@@ -145,9 +74,21 @@ const carregarDadosIniciais = async () => {
     }
 };
 
-// Alternar abas
+// Alternar abas e resetar estados
 watch(modo, (novoVal) => {
-    if (novoVal === "historico") carregarHistorico();
+    // RESETAR O MODO DE CRIAÇÃO AO TROCAR DE ABA
+    isCreatingClient.value = false;
+
+    if (novoVal === "historico") {
+        carregarHistorico();
+        clienteSelecionado.value = null;
+    } else if (novoVal === "clientes") {
+        vendaSelecionada.value = null;
+        clienteSelecionado.value = null;
+    } else if (novoVal === "nova") {
+        vendaSelecionada.value = null;
+        clienteSelecionado.value = null;
+    }
 });
 
 // --- AÇÕES: NOVA VENDA ---
@@ -190,7 +131,6 @@ const finalizarVenda = async () => {
             if (lote) {
                 await api.createItemVenda({
                     id_venda: idVenda,
-
                     id_lote: lote.id_lote,
                     quantidade: parseInt(item.quantidade),
                     valor_unitario: parseFloat(item.preco_venda),
@@ -217,9 +157,13 @@ const finalizarVenda = async () => {
 const carregarHistorico = async () => {
     carregando.value = true;
     try {
-        // Ordena por data decrescente (backend sort)
-        const res = await api.getVendas();
+        // Ordena por data decrescente (backend sort - snake_case)
+        const res = await api.getVendas({
+            params: { sort: "-data_hora_venda" },
+        });
         historicoVendas.value = res.data || [];
+    } catch (error) {
+        console.error("Erro ao carregar histórico:", error);
     } finally {
         carregando.value = false;
     }
@@ -230,27 +174,21 @@ const selecionarVendaHistorico = async (venda) => {
     itensVendaSelecionada.value = [];
 
     try {
-        // 1. Buscar itens da venda
         const resItens = await api.getItemVenda({
             params: { "filter-id_venda": `eq.${venda.id}` },
         });
         const itensRaw = resItens.data || [];
 
-        // 2. Enriquecer com nomes dos produtos (vêm apenas com ID do lote/produto)
+        // Enriquecer com nomes dos produtos
         const itensDetalhados = await Promise.all(
             itensRaw.map(async (item) => {
                 let nomeProd = "...";
-
-                // Tenta cache do lote
                 if (!lotesCache.value[item.id_lote]) {
                     try {
                         const l = await api.getLote(item.id_lote);
                         lotesCache.value[item.id_lote] = l.data;
-                    } catch {
-                        /* lote deletado? */
-                    }
+                    } catch {}
                 }
-
                 const lote = lotesCache.value[item.id_lote];
                 if (lote) {
                     const prod = produtos.value.find(
@@ -258,7 +196,6 @@ const selecionarVendaHistorico = async (venda) => {
                     );
                     if (prod) nomeProd = prod.nome;
                 }
-
                 return { ...item, nome: nomeProd };
             }),
         );
@@ -269,12 +206,95 @@ const selecionarVendaHistorico = async (venda) => {
     }
 };
 
+// --- AÇÕES: CLIENTES ---
+const iniciarCadastroCliente = () => {
+    clienteSelecionado.value = null;
+    isCreatingClient.value = true;
+    Object.assign(formCliente, { nome: "", cpf: "", data_nascimento: "" });
+};
+
+const salvarCliente = async () => {
+    if (!formCliente.nome || !formCliente.cpf)
+        return alert("Nome e CPF obrigatórios");
+
+    try {
+        const payload = { ...formCliente };
+        if (payload.data_nascimento) {
+            payload.data_nascimento = new Date(
+                payload.data_nascimento,
+            ).toISOString();
+        } else {
+            payload.data_nascimento = null;
+        }
+
+        await api.createCliente(payload);
+
+        alert("Cliente cadastrado!");
+        isCreatingClient.value = false;
+        carregarDadosIniciais(); // Recarrega a lista
+    } catch (error) {
+        alert(
+            "Erro ao criar: " + (error.response?.data?.detail || error.message),
+        );
+    }
+};
+
+const selecionarCliente = async (cliente) => {
+    isCreatingClient.value = false;
+    clienteSelecionado.value = cliente;
+    saldoCliente.value = 0;
+    historicoCliente.value = [];
+
+    try {
+        // 1. Buscar Saldo (Garante float para exibição)
+        const resSaldo = await api.getClienteSaldo(cliente.id);
+        saldoCliente.value = parseFloat(resSaldo.data.saldo_devedor || 0);
+
+        // 2. Buscar Histórico
+        const resVendas = await api.getVendas({
+            params: {
+                "filter-id_cliente": `eq.${cliente.id}`,
+                sort: "-data_hora_venda",
+            },
+        });
+
+        const vendasRaw = resVendas.data || [];
+
+        // 3. Calcular TOTAL de cada venda para o extrato
+        const historicoComValores = await Promise.all(
+            vendasRaw.map(async (v) => {
+                // Busca itens da venda para somar
+                const resItens = await api.getItemVenda({
+                    params: { "filter-id_venda": `eq.${v.id}` },
+                });
+                const itens = resItens.data || [];
+
+                // Soma: Quantidade * Valor Unitário
+                const totalVenda = itens.reduce(
+                    (acc, i) => acc + i.quantidade * i.valor_unitario,
+                    0,
+                );
+
+                return {
+                    ...v,
+                    total: totalVenda,
+                };
+            }),
+        );
+
+        historicoCliente.value = historicoComValores;
+    } catch (error) {
+        console.error("Erro ao carregar dados do cliente:", error);
+    }
+};
+
 // Helpers visuais
 const getNomeCliente = (id) =>
     clientes.value.find((c) => c.id === id)?.nome || "N/A";
 const getNomeFunc = (id) =>
     funcionarios.value.find((f) => f.id === id)?.nome || "N/A";
-const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
+const formatarData = (isoStr) =>
+    isoStr ? new Date(isoStr).toLocaleString("pt-BR") : "-";
 </script>
 
 <template>
@@ -302,7 +322,7 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
         <div class="panel-left">
             <div
                 class="receipt-paper"
-                :class="{ 'receipt-readonly': modo === 'historico' }"
+                :class="{ 'receipt-readonly': modo !== 'nova' }"
             >
                 <h2 class="receipt-title">
                     <span v-if="modo === 'nova'">Caixa Aberto</span>
@@ -362,11 +382,42 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                             </div>
                         </div>
                     </div>
-                    <div v-if="modo === 'nova'" class="form-stack"></div>
 
-                    <div v-else-if="modo === 'historico'"></div>
+                    <div v-else-if="modo === 'historico'">
+                        <div v-if="vendaSelecionada" class="info-static">
+                            <p>
+                                <span>Cliente:</span>
+                                {{
+                                    getNomeCliente(vendaSelecionada.id_cliente)
+                                }}
+                            </p>
+                            <p>
+                                <span>Atendente:</span>
+                                {{
+                                    getNomeFunc(vendaSelecionada.id_funcionario)
+                                }}
+                            </p>
+                            <p>
+                                <span>Data:</span>
+                                {{
+                                    formatarData(
+                                        vendaSelecionada.data_hora_renda,
+                                    )
+                                }}
+                            </p>
+                            <p>
+                                <span>Pgto:</span>
+                                {{
+                                    vendaSelecionada.tipo_pagamento.toUpperCase()
+                                }}
+                            </p>
+                        </div>
+                        <div v-else class="msg-empty">
+                            Selecione uma venda da lista &rarr;
+                        </div>
+                    </div>
 
-                    <div class="receipt-header" v-else-if="modo === 'clientes'">
+                    <div v-else-if="modo === 'clientes'">
                         <div v-if="isCreatingClient" class="form-stack">
                             <div class="form-group">
                                 <label>Nome Completo</label>
@@ -418,40 +469,20 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                             Selecione um cliente ou crie um novo &rarr;
                         </div>
                     </div>
-
-                    <div class="receipt-items" v-if="!isCreatingClient"></div>
-                    <div v-else style="flex: 1"></div>
-
-                    <div class="receipt-total" v-if="!isCreatingClient"></div>
-
-                    <button
-                        v-if="modo === 'nova'"
-                        class="btn-fab"
-                        @click="finalizarVenda"
-                    >
-                        +
-                    </button>
-
-                    <button
-                        v-if="modo === 'clientes' && isCreatingClient"
-                        class="btn-fab"
-                        @click="salvarCliente"
-                    >
-                        ✓
-                    </button>
                 </div>
 
-                <div class="receipt-items">
+                <div class="receipt-items" v-if="!isCreatingClient">
                     <div class="items-head" v-if="modo !== 'clientes'">
                         <span>Qtd</span>
                         <span>Item</span>
                         <span>Valor</span>
                     </div>
-                    <div class="items-head">
-                        <span>Qtd</span>
-                        <span>Item</span>
+                    <div class="items-head" v-else>
+                        <span>Data</span>
+                        <span>Pgto</span>
                         <span>Valor</span>
                     </div>
+
                     <div class="items-body">
                         <template v-if="modo === 'nova'">
                             <div
@@ -471,7 +502,10 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                                 }}</span>
                             </div>
                         </template>
-                        <template v-else-if="vendaSelecionada">
+
+                        <template
+                            v-else-if="modo === 'historico' && vendaSelecionada"
+                        >
                             <div
                                 v-for="(item, idx) in itensVendaSelecionada"
                                 :key="idx"
@@ -488,6 +522,7 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                                 }}</span>
                             </div>
                         </template>
+
                         <template
                             v-else-if="
                                 modo === 'clientes' && clienteSelecionado
@@ -506,7 +541,9 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                                 <span class="col-name">{{
                                     v.tipo_pagamento
                                 }}</span>
-                                <span class="col-price">#{{ v.id }}</span>
+                                <span class="col-price"
+                                    >R$ {{ v.total.toFixed(2) }}</span
+                                >
                             </div>
                             <div
                                 v-if="historicoCliente.length === 0"
@@ -518,7 +555,9 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                     </div>
                 </div>
 
-                <div class="receipt-total">
+                <div v-else style="flex: 1"></div>
+
+                <div class="receipt-total" v-if="!isCreatingClient">
                     <template v-if="modo !== 'clientes'">
                         <span>TOTAL</span>
                         <span class="big-price"
@@ -542,6 +581,13 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                     @click="finalizarVenda"
                 >
                     +
+                </button>
+                <button
+                    v-if="modo === 'clientes' && isCreatingClient"
+                    class="btn-fab"
+                    @click="salvarCliente"
+                >
+                    ✓
                 </button>
             </div>
         </div>
@@ -584,8 +630,8 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                     </div>
                 </div>
             </div>
+
             <div v-else-if="modo === 'clientes'" class="history-list">
-                <
                 <div
                     class="card-sale new-client-card"
                     @click="iniciarCadastroCliente"
@@ -610,7 +656,15 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                     class="card-sale card-cliente"
                     :class="{ active: clienteSelecionado?.id === c.id }"
                     @click="selecionarCliente(c)"
-                ></div>
+                >
+                    <div class="sale-left">
+                        <span class="sale-client">{{ c.nome }}</span>
+                        <span class="client-cpf">{{ c.cpf }}</span>
+                    </div>
+                    <div class="sale-right">
+                        <span class="sale-tag">ID: {{ c.id }}</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -642,16 +696,14 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
 
 .vendas-layout {
     display: flex;
-    height: calc(
-        100vh - 16vh
-    ); /* Ajuste para não estourar a tela com a nav e tabs */
+    height: calc(100vh - 16vh);
     background-color: var(--edna-black);
     overflow: hidden;
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     color: var(--edna-white);
 }
 
-/* --- ABAS DE NAVEGAÇÃO --- */
+/* --- ABAS --- */
 .tabs {
     background-color: var(--edna-dark-gray);
     padding: 0 20px;
@@ -682,7 +734,7 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
     font-weight: bold;
 }
 
-/* --- COLUNA ESQUERDA (NOTA FISCAL) --- */
+/* --- PAINEL ESQUERDO --- */
 .panel-left {
     width: 380px;
     min-width: 350px;
@@ -693,10 +745,9 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
     flex-direction: column;
 }
 
-/* Estilo do Papel/Recibo */
 .receipt-paper {
-    background-color: var(--edna-gray); /* Fundo do card */
-    border: 1px solid var(--edna-yellow); /* Borda amarela característica */
+    background-color: var(--edna-gray);
+    border: 1px solid var(--edna-yellow);
     border-radius: 12px;
     height: 100%;
     display: flex;
@@ -725,22 +776,18 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
     letter-spacing: 2px;
 }
 
-/* Formulários dentro da Nota */
 .form-stack {
     display: flex;
     flex-direction: column;
     gap: 15px;
 }
-
 .row {
     display: flex;
     gap: 10px;
 }
-
 .grow {
     flex: 1;
 }
-
 .form-group label {
     display: block;
     font-size: 0.8rem;
@@ -756,14 +803,27 @@ select {
     padding: 10px;
     border-radius: 6px;
     outline: none;
-    box-sizing: border-box; /* Importante para não vazar */
+    box-sizing: border-box;
 }
-
 select:focus {
     border-color: var(--edna-yellow);
 }
 
-/* Info Estática (Histórico) */
+.input-dark {
+    width: 100%;
+    background-color: var(--edna-black);
+    color: var(--edna-white);
+    border: 1px solid var(--edna-gray);
+    padding: 10px;
+    border-radius: 6px;
+    outline: none;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
+}
+.input-dark:focus {
+    border-color: var(--edna-yellow);
+}
+
 .info-static p {
     display: flex;
     justify-content: space-between;
@@ -782,8 +842,14 @@ select:focus {
     margin-top: 50px;
     font-style: italic;
 }
+.msg-empty-small {
+    text-align: center;
+    color: var(--edna-light-gray);
+    margin-top: 10px;
+    font-size: 0.8rem;
+}
 
-/* Lista de Itens na Nota */
+/* Tabela */
 .receipt-items {
     flex: 1;
     margin: 20px 0;
@@ -794,7 +860,7 @@ select:focus {
     padding: 10px;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Contém o scroll */
+    overflow: hidden;
 }
 
 .items-head {
@@ -805,13 +871,13 @@ select:focus {
     border-bottom: 1px solid var(--edna-gray);
     font-weight: bold;
     text-transform: uppercase;
+    justify-content: space-between;
 }
 
 .items-body {
     flex: 1;
     overflow-y: auto;
     padding-top: 10px;
-    /* Scrollbar fina */
     scrollbar-width: thin;
     scrollbar-color: var(--edna-gray) var(--edna-black);
 }
@@ -822,7 +888,6 @@ select:focus {
     padding: 6px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
-
 .item-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
 }
@@ -833,7 +898,11 @@ select:focus {
     color: var(--edna-blue);
     font-weight: bold;
 }
-
+.col-date {
+    width: 80px;
+    color: var(--edna-light-gray);
+    font-size: 0.85rem;
+}
 .col-name {
     flex: 1;
     white-space: nowrap;
@@ -841,14 +910,13 @@ select:focus {
     text-overflow: ellipsis;
     padding: 0 10px;
 }
-
 .col-price {
     width: 80px;
     text-align: right;
     color: var(--edna-green);
 }
 
-/* Totalizador */
+/* Total */
 .receipt-total {
     display: flex;
     justify-content: space-between;
@@ -856,23 +924,25 @@ select:focus {
     margin-top: auto;
     padding-top: 15px;
 }
-
 .receipt-total span:first-child {
     font-size: 1.2rem;
     color: var(--edna-light-gray);
 }
-
 .big-price {
     color: var(--edna-green);
     font-weight: bold;
     font-size: 2rem;
     text-shadow: 0 0 5px rgba(90, 211, 176, 0.2);
 }
+.debt {
+    color: var(--edna-orange);
+    text-shadow: 0 0 5px rgba(244, 113, 110, 0.2);
+}
 
-/* Botão Flutuante (+) */
+/* Botão Fab */
 .btn-fab {
     position: absolute;
-    bottom: -25px; /* Metade para fora do card para estilo */
+    bottom: -25px;
     left: 50%;
     transform: translateX(-50%);
     width: 60px;
@@ -881,7 +951,7 @@ select:focus {
     background-color: var(--edna-green);
     color: var(--edna-black);
     font-size: 2.5rem;
-    border: 4px solid var(--edna-dark-gray); /* Borda combina com fundo do painel */
+    border: 4px solid var(--edna-dark-gray);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -890,15 +960,14 @@ select:focus {
     transition:
         transform 0.2s,
         background-color 0.2s;
-    padding-bottom: 6px; /* Ajuste visual do + */
+    padding-bottom: 6px;
 }
-
 .btn-fab:hover {
     transform: translateX(-50%) scale(1.1);
     background-color: var(--edna-white);
 }
 
-/* --- COLUNA DIREITA (CATÁLOGO/HISTÓRICO) --- */
+/* --- PAINEL DIREITO --- */
 .panel-right {
     flex: 1;
     padding: 20px;
@@ -906,7 +975,6 @@ select:focus {
     overflow-y: auto;
 }
 
-/* Grid de Produtos */
 .catalog-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -924,27 +992,23 @@ select:focus {
     justify-content: space-between;
     height: 140px;
     transition: all 0.2s;
-    border-left: 4px solid var(--edna-blue); /* Identidade visual de produto */
+    border-left: 4px solid var(--edna-blue);
 }
-
 .card-prod:hover {
     background-color: var(--edna-gray);
     transform: translateY(-5px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
-
 .prod-info {
     display: flex;
     flex-direction: column;
 }
-
 .prod-name {
     font-weight: bold;
     font-size: 1.1rem;
     color: var(--edna-white);
     margin-bottom: 5px;
 }
-
 .prod-brand {
     font-size: 0.85rem;
     color: var(--edna-light-gray);
@@ -954,7 +1018,6 @@ select:focus {
     border-radius: 4px;
     align-self: flex-start;
 }
-
 .prod-price {
     align-self: flex-end;
     color: var(--edna-green);
@@ -962,7 +1025,6 @@ select:focus {
     font-size: 1.2rem;
 }
 
-/* Lista Histórico */
 .history-list {
     display: flex;
     flex-direction: column;
@@ -981,15 +1043,28 @@ select:focus {
     border-left: 4px solid var(--edna-light-gray);
     transition: all 0.2s;
 }
-
 .card-sale:hover {
     background-color: var(--edna-gray);
 }
-
 .card-sale.active {
     border-left-color: var(--edna-yellow);
     background-color: #3d3d4d;
     border-color: var(--edna-yellow);
+}
+.card-cliente {
+    border-left-color: var(--edna-wine);
+}
+
+.new-client-card {
+    border-style: dashed;
+    border-color: var(--edna-light-gray);
+    opacity: 0.8;
+    justify-content: center;
+}
+.new-client-card:hover {
+    opacity: 1;
+    border-color: var(--edna-green);
+    background-color: rgba(90, 211, 176, 0.1);
 }
 
 .sale-left {
@@ -997,17 +1072,20 @@ select:focus {
     flex-direction: column;
     gap: 4px;
 }
-
 .sale-id {
     color: var(--edna-yellow);
     font-weight: bold;
     font-size: 0.9rem;
 }
-
 .sale-client {
     font-size: 1.1rem;
     font-weight: bold;
     color: var(--edna-white);
+}
+.client-cpf {
+    font-size: 0.85rem;
+    color: var(--edna-light-gray);
+    font-family: monospace;
 }
 
 .sale-right {
@@ -1016,12 +1094,10 @@ select:focus {
     align-items: flex-end;
     gap: 4px;
 }
-
 .sale-date {
     color: var(--edna-light-gray);
     font-size: 0.85rem;
 }
-
 .sale-tag {
     background-color: var(--edna-black);
     color: var(--edna-blue);
@@ -1032,7 +1108,6 @@ select:focus {
     font-weight: bold;
 }
 
-/* Scrollbars globais para o componente */
 ::-webkit-scrollbar {
     width: 8px;
 }
@@ -1045,34 +1120,5 @@ select:focus {
 }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--edna-light-gray);
-}
-
-/* Estilo para os inputs dentro do recibo escuro */
-.input-dark {
-    width: 100%;
-    background-color: var(--edna-black);
-    color: var(--edna-white);
-    border: 1px solid var(--edna-gray);
-    padding: 10px;
-    border-radius: 6px;
-    outline: none;
-    box-sizing: border-box;
-    font-family: "Segoe UI", sans-serif;
-}
-.input-dark:focus {
-    border-color: var(--edna-yellow);
-}
-
-/* Destaque para o botão de novo cliente */
-.new-client-card {
-    border-style: dashed;
-    border-color: var(--edna-light-gray);
-    opacity: 0.8;
-    justify-content: center;
-}
-.new-client-card:hover {
-    opacity: 1;
-    border-color: var(--edna-green);
-    background-color: rgba(90, 211, 176, 0.1);
 }
 </style>
