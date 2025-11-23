@@ -25,6 +25,89 @@ const historicoVendas = ref([]);
 const vendaSelecionada = ref(null);
 const itensVendaSelecionada = ref([]);
 
+// --- DADOS: CLIENTES (ATUALIZADO) ---
+const clienteSelecionado = ref(null);
+const historicoCliente = ref([]);
+const saldoCliente = ref(0);
+
+// NOVO: Estado para criação
+const isCreatingClient = ref(false);
+const formCliente = reactive({
+    nome: "",
+    cpf: "",
+    data_nascimento: "",
+});
+
+// Atualizar o watch(modo)
+watch(modo, (novoVal) => {
+    if (novoVal === "historico") carregarHistorico();
+    if (novoVal === "clientes") {
+        vendaSelecionada.value = null;
+        clienteSelecionado.value = null;
+        isCreatingClient.value = false; // Resetar
+    }
+});
+
+// NOVO: Iniciar criação
+const iniciarCadastroCliente = () => {
+    clienteSelecionado.value = null;
+    isCreatingClient.value = true;
+    // Limpar form
+    Object.assign(formCliente, { nome: "", cpf: "", data_nascimento: "" });
+};
+
+// NOVO: Salvar no backend
+const salvarCliente = async () => {
+    if (!formCliente.nome || !formCliente.cpf)
+        return alert("Nome e CPF obrigatórios");
+
+    try {
+        // Formata data para ISO se houver
+        const payload = { ...formCliente };
+        if (payload.data_nascimento) {
+            payload.data_nascimento = new Date(
+                payload.data_nascimento,
+            ).toISOString();
+        } else {
+            payload.data_nascimento = null;
+        }
+
+        await api.createCliente(payload);
+
+        alert("Cliente cadastrado!");
+        isCreatingClient.value = false;
+        carregarDadosIniciais(); // Recarrega a lista da direita
+    } catch (error) {
+        alert(
+            "Erro ao criar: " + (error.response?.data?.detail || error.message),
+        );
+    }
+};
+
+// Atualizar selecionarCliente para fechar o modo de criação
+const selecionarCliente = async (cliente) => {
+    isCreatingClient.value = false; // Garante que saia do modo de criação
+    clienteSelecionado.value = cliente;
+    saldoCliente.value = 0;
+    historicoCliente.value = [];
+
+    // ... resto da função igual ao anterior ...
+    try {
+        const resSaldo = await api.getClienteSaldo(cliente.id);
+        saldoCliente.value = resSaldo.data.saldo_devedor || 0;
+
+        const resVendas = await api.getVendas({
+            params: {
+                "filter-idCliente": `eq.${cliente.id}`,
+                sort: "-dataHoraVenda",
+            },
+        });
+        historicoCliente.value = resVendas.data || [];
+    } catch (error) {
+        console.error(error);
+    }
+};
+
 // --- COMPUTED (Cálculos) ---
 const totalVenda = computed(() => {
     if (modo.value === "nova") {
@@ -207,6 +290,12 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
         >
             Histórico
         </button>
+        <button
+            :class="{ active: modo === 'clientes' }"
+            @click="modo = 'clientes'"
+        >
+            Clientes
+        </button>
     </div>
 
     <div class="vendas-layout">
@@ -216,13 +305,21 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                 :class="{ 'receipt-readonly': modo === 'historico' }"
             >
                 <h2 class="receipt-title">
-                    {{
-                        modo === "nova"
-                            ? "Caixa Aberto"
-                            : vendaSelecionada
-                              ? `Nota #${vendaSelecionada.id}`
-                              : "Selecione"
-                    }}
+                    <span v-if="modo === 'nova'">Caixa Aberto</span>
+                    <span v-else-if="modo === 'historico'">
+                        {{
+                            vendaSelecionada
+                                ? `Nota #${vendaSelecionada.id}`
+                                : "Selecione"
+                        }}
+                    </span>
+                    <span v-else-if="modo === 'clientes'">
+                        {{
+                            isCreatingClient
+                                ? "Novo Cadastro"
+                                : "Extrato Cliente"
+                        }}
+                    </span>
                 </h2>
 
                 <div class="receipt-header">
@@ -265,31 +362,91 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                             </div>
                         </div>
                     </div>
+                    <div v-if="modo === 'nova'" class="form-stack"></div>
 
-                    <div v-else-if="vendaSelecionada" class="info-static">
-                        <p>
-                            <span>Cliente:</span>
-                            {{ getNomeCliente(vendaSelecionada.id_cliente) }}
-                        </p>
-                        <p>
-                            <span>Atendente:</span>
-                            {{ getNomeFunc(vendaSelecionada.id_funcionario) }}
-                        </p>
-                        <p>
-                            <span>Data:</span>
-                            {{ formatarData(vendaSelecionada.data_hora_renda) }}
-                        </p>
-                        <p>
-                            <span>Pgto:</span>
-                            {{ vendaSelecionada.tipo_pagamento.toUpperCase() }}
-                        </p>
+                    <div v-else-if="modo === 'historico'"></div>
+
+                    <div class="receipt-header" v-else-if="modo === 'clientes'">
+                        <div v-if="isCreatingClient" class="form-stack">
+                            <div class="form-group">
+                                <label>Nome Completo</label>
+                                <input
+                                    v-model="formCliente.nome"
+                                    type="text"
+                                    placeholder="Ex: João da Silva"
+                                    class="input-dark"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label>CPF (Apenas números)</label>
+                                <input
+                                    v-model="formCliente.cpf"
+                                    type="text"
+                                    maxlength="11"
+                                    placeholder="00011122233"
+                                    class="input-dark"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label>Data de Nascimento</label>
+                                <input
+                                    v-model="formCliente.data_nascimento"
+                                    type="date"
+                                    class="input-dark"
+                                />
+                            </div>
+                        </div>
+
+                        <div v-else-if="clienteSelecionado" class="info-static">
+                            <p>
+                                <span>Nome:</span> {{ clienteSelecionado.nome }}
+                            </p>
+                            <p>
+                                <span>CPF:</span>
+                                {{ clienteSelecionado.cpf || "N/A" }}
+                            </p>
+                            <p>
+                                <span>Nascimento:</span>
+                                {{
+                                    formatarData(
+                                        clienteSelecionado.data_nascimento,
+                                    ).split(",")[0]
+                                }}
+                            </p>
+                        </div>
+                        <div v-else class="msg-empty">
+                            Selecione um cliente ou crie um novo &rarr;
+                        </div>
                     </div>
-                    <div v-else class="msg-empty">
-                        Selecione uma venda da lista &rarr;
-                    </div>
+
+                    <div class="receipt-items" v-if="!isCreatingClient"></div>
+                    <div v-else style="flex: 1"></div>
+
+                    <div class="receipt-total" v-if="!isCreatingClient"></div>
+
+                    <button
+                        v-if="modo === 'nova'"
+                        class="btn-fab"
+                        @click="finalizarVenda"
+                    >
+                        +
+                    </button>
+
+                    <button
+                        v-if="modo === 'clientes' && isCreatingClient"
+                        class="btn-fab"
+                        @click="salvarCliente"
+                    >
+                        ✓
+                    </button>
                 </div>
 
                 <div class="receipt-items">
+                    <div class="items-head" v-if="modo !== 'clientes'">
+                        <span>Qtd</span>
+                        <span>Item</span>
+                        <span>Valor</span>
+                    </div>
                     <div class="items-head">
                         <span>Qtd</span>
                         <span>Item</span>
@@ -331,14 +488,52 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                                 }}</span>
                             </div>
                         </template>
+                        <template
+                            v-else-if="
+                                modo === 'clientes' && clienteSelecionado
+                            "
+                        >
+                            <div
+                                v-for="v in historicoCliente"
+                                :key="v.id"
+                                class="item-row"
+                            >
+                                <span class="col-date">{{
+                                    formatarData(v.data_hora_renda).split(
+                                        " ",
+                                    )[0]
+                                }}</span>
+                                <span class="col-name">{{
+                                    v.tipo_pagamento
+                                }}</span>
+                                <span class="col-price">#{{ v.id }}</span>
+                            </div>
+                            <div
+                                v-if="historicoCliente.length === 0"
+                                class="msg-empty-small"
+                            >
+                                Sem histórico de compras
+                            </div>
+                        </template>
                     </div>
                 </div>
 
                 <div class="receipt-total">
-                    <span>TOTAL</span>
-                    <span class="big-price"
-                        >R$ {{ totalVenda.toFixed(2) }}</span
-                    >
+                    <template v-if="modo !== 'clientes'">
+                        <span>TOTAL</span>
+                        <span class="big-price"
+                            >R$ {{ totalVenda.toFixed(2) }}</span
+                        >
+                    </template>
+                    <template v-else-if="modo === 'clientes'">
+                        <span>SALDO DEVEDOR</span>
+                        <span
+                            class="big-price"
+                            :class="{ debt: saldoCliente > 0 }"
+                        >
+                            R$ {{ saldoCliente.toFixed(2) }}
+                        </span>
+                    </template>
                 </div>
 
                 <button
@@ -367,7 +562,7 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                 </div>
             </div>
 
-            <div v-else class="history-list">
+            <div v-else-if="modo === 'historico'" class="history-list">
                 <div
                     v-for="v in historicoVendas"
                     :key="v.id"
@@ -388,6 +583,34 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
                         <span class="sale-tag">{{ v.tipo_pagamento }}</span>
                     </div>
                 </div>
+            </div>
+            <div v-else-if="modo === 'clientes'" class="history-list">
+                <
+                <div
+                    class="card-sale new-client-card"
+                    @click="iniciarCadastroCliente"
+                    :class="{ active: isCreatingClient }"
+                >
+                    <div
+                        class="sale-left"
+                        style="
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 10px;
+                        "
+                    >
+                        <span class="sale-id" style="font-size: 1.5rem">+</span>
+                        <span class="sale-client">Cadastrar Novo Cliente</span>
+                    </div>
+                </div>
+
+                <div
+                    v-for="c in clientes"
+                    :key="c.id"
+                    class="card-sale card-cliente"
+                    :class="{ active: clienteSelecionado?.id === c.id }"
+                    @click="selecionarCliente(c)"
+                ></div>
             </div>
         </div>
     </div>
@@ -419,7 +642,9 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
 
 .vendas-layout {
     display: flex;
-    height: calc(100vh - 16vh); /* Ajuste para não estourar a tela com a nav e tabs */
+    height: calc(
+        100vh - 16vh
+    ); /* Ajuste para não estourar a tela com a nav e tabs */
     background-color: var(--edna-black);
     overflow: hidden;
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -512,7 +737,9 @@ const formatarData = (isoStr) => new Date(isoStr).toLocaleString("pt-BR");
     gap: 10px;
 }
 
-.grow { flex: 1; }
+.grow {
+    flex: 1;
+}
 
 .form-group label {
     display: block;
@@ -660,7 +887,9 @@ select:focus {
     align-items: center;
     justify-content: center;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-    transition: transform 0.2s, background-color 0.2s;
+    transition:
+        transform 0.2s,
+        background-color 0.2s;
     padding-bottom: 6px; /* Ajuste visual do + */
 }
 
@@ -701,7 +930,7 @@ select:focus {
 .card-prod:hover {
     background-color: var(--edna-gray);
     transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .prod-info {
@@ -804,8 +1033,46 @@ select:focus {
 }
 
 /* Scrollbars globais para o componente */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--edna-black); }
-::-webkit-scrollbar-thumb { background: var(--edna-gray); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--edna-light-gray); }
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--edna-black);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--edna-gray);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--edna-light-gray);
+}
+
+/* Estilo para os inputs dentro do recibo escuro */
+.input-dark {
+    width: 100%;
+    background-color: var(--edna-black);
+    color: var(--edna-white);
+    border: 1px solid var(--edna-gray);
+    padding: 10px;
+    border-radius: 6px;
+    outline: none;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
+}
+.input-dark:focus {
+    border-color: var(--edna-yellow);
+}
+
+/* Destaque para o botão de novo cliente */
+.new-client-card {
+    border-style: dashed;
+    border-color: var(--edna-light-gray);
+    opacity: 0.8;
+    justify-content: center;
+}
+.new-client-card:hover {
+    opacity: 1;
+    border-color: var(--edna-green);
+    background-color: rgba(90, 211, 176, 0.1);
+}
 </style>
