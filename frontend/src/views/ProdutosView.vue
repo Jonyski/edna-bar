@@ -614,14 +614,13 @@ button:hover {
     cursor: pointer;
     opacity: 0.7;
     transition: transform 0.2s, opacity 0.2s;
-    /* Se quiser uma cor específica para o lápis */
     filter: grayscale(100%); 
 }
 
 .btn-icon-edit:hover {
     opacity: 1;
     transform: scale(1.2);
-    filter: none; /* Restaura cor original do emoji */
+    filter: none;
 }
 
 /* --- CARDS (OFERTAS) --- */

@@ -122,4 +122,7 @@ export default {
   updateProduto(id, data) {
     return apiClient.put(`/produtos/${id}`, data);
   },
+  updateLote(id, data) {
+    return apiClient.put(`/lotes/${id}`, data);
+  },
 };
