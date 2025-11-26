@@ -51,7 +51,7 @@ services:
     image: nginx:stable
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/letsencrypt
+      - ./nginx/certs:/etc/ssl/cloudflare:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
     networks:
       - web
