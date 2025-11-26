@@ -44,19 +44,23 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    depends_on:
-      - backend
 
   nginx:
     image: nginx:stable
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/ssl/cloudflare:ro
+      - ./nginx/conf.d/certs:/etc/ssl/cloudflare:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
     networks:
       - web
       - internal
     restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
 
 volumes:
   psql_volume_bp:
